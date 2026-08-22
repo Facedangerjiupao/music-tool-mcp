@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "audio-sonic-mcp"
-version = "1.1.0"
+version = "1.2.0"
 description = "Local-first MCP server and CLI that turns a YouTube link or a local audio file into a structured sonic signature: BPM, section-by-section key, production profile, and a 512-dim CLAP vibe embedding"
 requires-python = ">=3.10"
 dependencies = [
@@ -26,6 +26,13 @@ clap = [
     "torchaudio>=2.0.0",
     "transformers>=4.38.0",
     "demucs>=4.0.1",
+]
+# Beat tracking. madmom is the PRIMARY BPM engine, but it is unmaintained
+# (0.16.1, classifiers stop at Python 3.7) and needs a Cython build, so it
+# cannot be a hard dependency. Without it BPM falls back to librosa and every
+# payload reports "bpm_engine": "librosa-fallback".
+beats = [
+    "madmom>=0.16.1",
 ]
 # Cloud / remote transports: TRANSPORT_MODE=sse or hybrid. "hybrid" serves the
 # MCP SSE endpoint alongside the REST API in app_cloud.py.

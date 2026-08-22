@@ -35,6 +35,7 @@ def assemble_payload(
 
     sonic_signature = {
         "bpm": features["bpm"],
+        "bpm_engine": features.get("bpm_engine", "unknown"),
         "bpm_variable": features.get("bpm_variable", False),
         "bpm_range": features.get("bpm_range"),
         "key": features["key"],

@@ -92,7 +92,8 @@ def analyze_audio(wav_path: Path, stems_dir: "Path | None" = None, full_song: bo
         logger.info("analyze_audio: running HPSS (stems unavailable)")
         y_harmonic, y_percussive = librosa.effects.hpss(y_mono)
 
-    bpm = _extract_bpm(y_percussive, TARGET_SR, y_bass=y_bass)
+    bpm_meta: dict = {}
+    bpm = _extract_bpm(y_percussive, TARGET_SR, y_bass=y_bass, out=bpm_meta)
 
     # Full-track majority vote: 5 proportional windows at 11 kHz.
     # Overrides primary only when a clear majority (>50%) exists and gap is 7–25%.
@@ -147,6 +148,7 @@ def analyze_audio(wav_path: Path, stems_dir: "Path | None" = None, full_song: bo
 
     return {
         "bpm": round(bpm, 2),
+        "bpm_engine": bpm_meta.get("bpm_engine", "unknown"),
         "bpm_variable": bpm_variable,
         "bpm_range": bpm_range,
         "key": key_str,
@@ -534,13 +536,32 @@ def _extract_bpm_primary(y: np.ndarray, sr: int, y_bass: "np.ndarray | None" = N
     return float(tempo)
 
 
-def _extract_bpm(y: np.ndarray, sr: int, y_bass: "np.ndarray | None" = None) -> float:
+def _extract_bpm(
+    y: np.ndarray,
+    sr: int,
+    y_bass: "np.ndarray | None" = None,
+    out: "dict | None" = None,
+) -> float:
     """Calls _extract_bpm_madmom if available, else falls back to _extract_bpm_primary
-    and cross-checks with tempogram peak + PLP."""
+    and cross-checks with tempogram peak + PLP.
+
+    When `out` is supplied, `out["bpm_engine"]` records which engine produced the
+    estimate: "madmom" or "librosa-fallback". madmom is an optional dependency
+    (see the `beats` extra) and is absent from most installs, in which case the
+    librosa fallback runs. That fallback is materially less reliable on some
+    material — it can land on a 2:3 or octave multiple of the true tempo — so
+    callers should surface the engine rather than presenting BPM unqualified.
+    """
     try:
-        return _extract_bpm_madmom(y, sr)
+        bpm = _extract_bpm_madmom(y, sr)
+        if out is not None:
+            out["bpm_engine"] = "madmom"
+        return bpm
     except Exception as exc:
         logger.warning("_extract_bpm: madmom failed or not installed (%s). Falling back to librosa.", exc)
+
+    if out is not None:
+        out["bpm_engine"] = "librosa-fallback"
 
     import librosa
 

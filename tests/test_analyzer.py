@@ -25,6 +25,7 @@ class TestAnalyzeAudio:
         result = analyze_audio(audio_wav)
         assert set(result.keys()) == {
             "bpm",
+            "bpm_engine",
             "bpm_variable",
             "bpm_range",
             "key",
@@ -37,6 +38,12 @@ class TestAnalyzeAudio:
             "stereo_width_label",
             "vocal_presence_label",
         }
+
+    def test_bpm_engine_names_the_engine_used(self, audio_wav):
+        """BPM must never be reported unqualified: madmom is optional, and the
+        librosa fallback can land on a 2:3 or octave multiple of the true tempo."""
+        result = analyze_audio(audio_wav)
+        assert result["bpm_engine"] in {"madmom", "librosa-fallback"}
 
     def test_bpm_is_non_negative(self, audio_wav):
         result = analyze_audio(audio_wav)

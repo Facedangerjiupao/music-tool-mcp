@@ -50,6 +50,7 @@ Audio Sonic MCP runs entirely on your local machine (requiring no API keys, exte
   },
   "sonic_signature": {
     "bpm": 153.8,
+    "bpm_engine": "madmom",
     "bpm_variable": false,
     "key": "G Major",
     "key_variable": true,
@@ -372,10 +373,31 @@ Model inference on multi-staged architectures is highly CPU/VRAM intensive. To p
 ### 3. Windows Librosa Deadlock Fix
 FastMCP thread dispatching under Windows can cause Numba compilation deadlocks inside background worker threads. To prevent this, Audio Sonic MCP incorporates a **Pre-warming Routine** (`_prewarm_librosa()` and `_prewarm_demucs()`) on launch. It forces JIT compile of resampling, HPSS, and mono-mixing functions in the main thread before starting the RPC listener.
 
-### 4. Diagnosing with `check_health`
+### 4. BPM Accuracy and the `bpm_engine` Field
+Tempo is estimated by **madmom**'s RNN beat tracker. madmom is an *optional* dependency: it is unmaintained (latest release 0.16.1, classifiers stop at Python 3.7) and requires a Cython build, so it cannot be installed reliably everywhere and is **not** part of the default install.
+
+When madmom is unavailable the pipeline falls back to librosa. That fallback is good on steady four-on-the-floor material but can lock onto a **2:3 or octave multiple** of the true tempo — on one of our regression fixtures it reports 99.4 BPM against a ground truth of 148.
+
+So the tempo is never reported unqualified. **Every payload carries a `bpm_engine` field** naming the engine that actually produced the number:
+
+| `bpm_engine` | Meaning |
+|---|---|
+| `madmom` | RNN beat tracker — full accuracy. |
+| `librosa-fallback` | madmom unavailable; treat BPM as approximate and expect occasional octave/triplet errors. |
+
+`check_health` reports madmom's status explicitly. To enable the accurate path:
+
+```bash
+pip install ".[beats]"
+```
+
+If the build fails on a recent Python, use 3.10 for the analysis environment — madmom has no wheels for newer interpreters.
+
+### 5. Diagnosing with `check_health`
 If the server reports as `degraded` or tools are missing, call the `check_health` tool or check CLI warnings. It queries:
 * Availability of `ffmpeg` on the execution path.
 * Installation status of Python packages (`librosa`, `soundfile`, `mcp`, etc.).
+* Presence of the optional `madmom` beat tracker, and which `bpm_engine` will be used as a result.
 * Access permissions to the `JOBS_ROOT` directory.
 
 ---

@@ -331,6 +331,26 @@ async def check_health() -> str:
         if not found:
             all_ok = False
 
+    # madmom is optional but is the primary BPM engine. Its absence does not
+    # break the server, so it does not flip `all_ok` — but it silently degrades
+    # BPM accuracy, so report it explicitly rather than letting it pass unseen.
+    madmom_ok = importlib.util.find_spec("madmom") is not None
+    results["checks"].append(
+        {
+            "name": "python:madmom (optional)",
+            "status": "ok" if madmom_ok else "missing",
+            "bpm_engine": "madmom" if madmom_ok else "librosa-fallback",
+            **({} if madmom_ok else {
+                "note": (
+                    "BPM falls back to librosa, which can report a 2:3 or octave "
+                    "multiple of the true tempo. Every result carries a "
+                    "`bpm_engine` field naming the engine actually used. "
+                    "Install with: pip install \".[beats]\""
+                )
+            }),
+        }
+    )
+
     results["checks"].append(
         {
             "name": "jobs_root",
