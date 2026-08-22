@@ -1,0 +1,81 @@
+{
+  "identifier": "ripunjay-kashyap-audio-sonic-mcp",
+  "name": "Audio Sonic MCP",
+  "version": "1.2.0",
+  "description": "Runs entirely on your own machine - no API keys, no uploads, no cloud. Turn a YouTube link or a local audio file into a structured sonic signature: BPM, section-by-section musical key, a production profile (vocal presence, transient punch, stereo width), and a 512-dimension CLAP vibe embedding.",
+  "author": "Ripunjay Kashyap",
+  "authorUrl": "https://github.com/ripunjay-kashyap",
+  "homepage": "https://github.com/ripunjay-kashyap/audio-sonic-mcp",
+  "icon": "🎵",
+  "tags": [
+    "audio",
+    "music",
+    "bpm",
+    "key-detection",
+    "music-analysis",
+    "clap",
+    "embeddings",
+    "demucs",
+    "stem-separation",
+    "local-first"
+  ],
+  "tools": [
+    {
+      "name": "get_sonic_signature",
+      "description": "Submits a YouTube URL for sonic analysis and returns immediately.\nThe pipeline runs in the background — poll get_job_status(job_id) for results.\nTypical processing: 20-30s on GPU, ~6-8 min on CPU (Demucs separation dominates).\n\nArgs:\n    url: YouTube URL of the track to analyze.\n    job_id: Optional custom job ID. Auto-generated if omitted.",
+      "inputSchema": {
+        "properties": {
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "job_id": {
+            "default": null,
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "get_sonic_signatureArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_job_status",
+      "description": "Returns the current status and payload of a previously submitted job.\n\nArgs:\n    job_id: The job ID returned by get_sonic_signature.",
+      "inputSchema": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "get_job_statusArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_jobs",
+      "description": "Lists all completed and in-progress analysis jobs.",
+      "inputSchema": {
+        "properties": {},
+        "title": "list_jobsArguments",
+        "type": "object"
+      }
+    },
+    {
+      "name": "check_health",
+      "description": "Verification tool for server dependencies.",
+      "inputSchema": {
+        "properties": {},
+        "title": "check_healthArguments",
+        "type": "object"
+      }
+    }
+  ]
+}
