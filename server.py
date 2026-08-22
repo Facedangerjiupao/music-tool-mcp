@@ -385,8 +385,22 @@ def _prewarm_demucs() -> None:
 def main():
     _prewarm_librosa()
     _prewarm_demucs()
-    app.run()
+    
+    transport = os.environ.get("TRANSPORT_MODE", "stdio").lower()
+    if transport == "sse":
+        port = int(os.environ.get("PORT", 8000))
+        logger.info("Starting Audio Sonic MCP in SSE mode on port %d...", port)
+        app.run(transport="sse", host="0.0.0.0", port=port)
+    elif transport == "hybrid":
+        import uvicorn
+        port = int(os.environ.get("PORT", 8000))
+        logger.info("Starting Audio Sonic Hybrid Server (MCP SSE + REST API) on port %d...", port)
+        uvicorn.run("app_cloud:app", host="0.0.0.0", port=port, reload=False)
+    else:
+        logger.info("Starting Audio Sonic MCP in Stdio mode...")
+        app.run(transport="stdio")
 
 
 if __name__ == "__main__":
     main()
+

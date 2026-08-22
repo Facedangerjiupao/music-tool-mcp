@@ -289,6 +289,8 @@ Configure environment options by declaring these variables in your active termin
 | `FILE_MAX_DURATION_SEC`| `600` | Safety ceiling for local file processing duration (YouTube downloads are capped at 60 minutes). |
 | `FFMPEG_BIN` | *Unset* | Path to folder containing the `ffmpeg` binary if it is not present in your system `PATH`. |
 | `YTDLP_PROXY` | *Unset* | HTTP/SOCKS proxy string passed directly to `yt-dlp` to bypass rate limits or network blocks. |
+| `TRANSPORT_MODE` | `stdio` | Transport the server listens on: `stdio` (default, for local MCP clients), `sse` (remote MCP over HTTP), or `hybrid` (MCP SSE **and** the REST API from `app_cloud.py`). `sse`/`hybrid` need `pip install ".[cloud]"`. |
+| `PORT` | `8000` | Listening port when `TRANSPORT_MODE` is `sse` or `hybrid`. Ignored for `stdio`. |
 
 ---
 
