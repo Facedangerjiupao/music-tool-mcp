@@ -86,3 +86,11 @@ docs/superpowers/
 notes.md
 ultimate-test.md
 *.code-workspace
+# Vendored FFmpeg static build - 41 MB tarball plus extracted tree, never commit
+ffmpeg-*-amd64-static/
+ffmpeg-*.tar.xz
+
+# Scratch / draft files
+blog.md
+filter_msg.py
+verify_gpu.py
