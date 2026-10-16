@@ -15,6 +15,7 @@ from server import (
     get_job_status,
     list_jobs,
     check_health,
+    prepare_media,
     JOB_STORE,
     JobStatus,
     JOBS_ROOT
@@ -44,12 +45,34 @@ app.add_middleware(
 # Mounting it at /mcp makes the MCP SSE endpoint reachable at:
 # GET http://<host>:<port>/mcp/sse
 # POST http://<host>:<port>/mcp/messages
-app.mount("/mcp", mcp_app.app)
+# MCP 1.27 adds ASGI root_path to the message endpoint itself.
+# Passing mount_path here too would advertise /mcp/mcp/messages/.
+app.mount("/mcp", mcp_app.sse_app())
 
 # ── Pydantic Request Models ──────────────────────────────────────────────────
 class AnalysisRequest(BaseModel):
     url: str
     job_id: str | None = None
+
+
+class MediaRequest(BaseModel):
+    source: str
+    mode: str = "rhythm"
+    media_type: str = "audio"
+    beat_engine: str = "librosa"
+    fps: float = 30.0
+    keep_media: bool = True
+    separate: bool = False
+    job_id: str | None = None
+
+
+@app.post("/api/v1/media", tags=["Workflow"])
+async def trigger_media(request: MediaRequest):
+    """Queue URL/local media extraction and optional raw feature timestamps."""
+    result = json.loads(await prepare_media(**request.model_dump()))
+    if result.get("status") == "error":
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 # ── REST API Endpoints ────────────────────────────────────────────────────────
 
@@ -63,10 +86,12 @@ async def trigger_analysis(request: AnalysisRequest):
         result_json_str = await get_sonic_signature(url=request.url, job_id=request.job_id)
         result = json.loads(result_json_str)
         
-        if result.get("status") == JobStatus.ERROR:
+        if result.get("status", result.get("header", {}).get("status")) == JobStatus.ERROR:
             raise HTTPException(status_code=400, detail=result.get("error", {}).get("message", "Validation failed"))
             
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error submitting analysis job: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -79,7 +104,7 @@ async def get_job(job_id: str):
     status_str = await get_job_status(job_id)
     status_data = json.loads(status_str)
     
-    if "error" in status_data and "not found" in status_data["error"].lower():
+    if isinstance(status_data.get("error"), str) and "not found" in status_data["error"].lower():
         raise HTTPException(status_code=404, detail=status_data["error"])
         
     return status_data

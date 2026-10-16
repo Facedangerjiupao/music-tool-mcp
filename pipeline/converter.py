@@ -8,6 +8,10 @@ import subprocess
 from subprocess import DEVNULL
 from pathlib import Path
 
+from pipeline.runtime import configure_runtime
+
+configure_runtime()
+
 logger = logging.getLogger(__name__)
 
 TARGET_SAMPLE_RATE = 44100
@@ -37,6 +41,9 @@ def convert_to_wav(raw_audio_path: Path, out_dir: Path | None = None) -> Path:
 
     cmd = [
         "ffmpeg",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel", "error",
         "-y",  # overwrite output
         "-i",
         str(raw_audio_path),  # input file
@@ -66,10 +73,20 @@ def convert_to_wav(raw_audio_path: Path, out_dir: Path | None = None) -> Path:
         stdin=DEVNULL,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=120,
     )
 
+    if result.returncode != 0 and "Requested resampling engine is unavailable" in result.stderr:
+        logger.info("FFmpeg build has no libsoxr; using its built-in swresample engine")
+        fallback_cmd = cmd.copy()
+        fallback_cmd[fallback_cmd.index("-af") + 1] = "aresample=resampler=swr"
+        result = subprocess.run(fallback_cmd, stdin=DEVNULL, capture_output=True,
+                                text=True, encoding="utf-8", errors="replace", timeout=120)
+
     if result.returncode != 0:
+        wav_path.unlink(missing_ok=True)
         raise RuntimeError(
             f"FFmpeg conversion failed.\n"
             f"Command: {' '.join(cmd)}\n"

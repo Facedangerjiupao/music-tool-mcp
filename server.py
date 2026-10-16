@@ -22,6 +22,9 @@ from pipeline.separator import separate_stems
 from pipeline.analyzer import analyze_audio
 from pipeline.vectorizer import generate_vibe_vector
 from pipeline.assembler import assemble_payload
+from pipeline.runtime import default_jobs_root
+from pipeline.workflow import (create_job_directory, run_media_workflow, validate_job_id,
+                               validate_request, write_json)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +44,7 @@ if _venv_bin not in os.environ.get("PATH", ""):
 os.environ["TORCHAUDIO_USE_BACKEND_PREFERENCE"] = "soundfile"
 
 # ── Config ────────────────────────────────────────────────────────────────────
-JOBS_ROOT = Path(os.environ.get("JOBS_ROOT", Path(__file__).parent / "jobs"))
+JOBS_ROOT = default_jobs_root()
 JOBS_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastMCP("audio-sonic-mcp")
@@ -77,7 +80,7 @@ def _cleanup_job_artifacts(job_dir: Path) -> None:
 
     removed_bytes = 0
     for path in job_dir.iterdir():
-        if path.name == "metadata.json":
+        if path.name in {"metadata.json", "result.json", "job.json"}:
             continue
         try:
             if path.is_dir():
@@ -220,6 +223,9 @@ async def get_sonic_signature(url: str, job_id: str = None) -> str:
     logger.info("▶ get_sonic_signature | job=%s url=%s", job_id, url)
 
     try:
+        validate_job_id(job_id)
+        if job_id in JOB_STORE or (JOBS_ROOT / job_id).exists():
+            raise ValueError(f"Job '{job_id}' already exists; use a new job_id")
         validate_url_format(url)
     except ValueError as exc:
         error_payload = {
@@ -250,6 +256,78 @@ async def get_sonic_signature(url: str, job_id: str = None) -> str:
     )
 
 
+def _run_media_pipeline(job_id: str, source: str, job_dir: Path, started_at: float, options: dict) -> None:
+    """Use the existing server queue/lock for the workflow extension."""
+    try:
+        with CONCURRENCY_LOCK:
+            JOB_STORE[job_id] = {"status": JobStatus.RUNNING, "started_at": started_at}
+            write_json(job_dir / "job.json", {"job_id": job_id, "status": "running", "started_at": started_at})
+            payload = run_media_workflow(source, job_dir, **options)
+            JOB_STORE[job_id] = {"status": JobStatus.SUCCESS, "payload": payload, "started_at": started_at}
+    except Exception as exc:
+        logger.exception("Media workflow failed: %s", job_id)
+        payload = {"job_id": job_id, "status": "error",
+                   "error": {"type": type(exc).__name__, "message": str(exc)}}
+        JOB_STORE[job_id] = {"status": JobStatus.ERROR, "payload": payload, "started_at": started_at}
+        try:
+            write_json(job_dir / "result.json", payload)
+        except OSError:
+            logger.exception("Could not persist failed job %s", job_id)
+
+
+@app.tool()
+async def prepare_media(source: str, mode: str = "rhythm", media_type: str = "audio",
+                        beat_engine: str = "librosa", fps: float = 30.0,
+                        keep_media: bool = True, separate: bool = False,
+                        job_id: str | None = None) -> str:
+    """Prepare URL or local audio/video for another AI/workflow. Returns a job ID immediately.
+
+    Poll get_job_status(job_id) until status is success/error. Success returns
+    absolute artifact paths and raw JSON features; no written report or script.
+    mode: extract (files only), rhythm (full-file timestamps/energy), full (also
+    upstream key/production descriptors). media_type=video keeps URL video too.
+    beat_engine: librosa (built-in; no downbeats), beat-this (optional model),
+    all-in-one (optional structure model with verse/chorus segments).
+    keep_media defaults true so subsequent tools can read files. separate=true
+    explicitly requests optional full-song Demucs. fps sets nearest frame numbers.
+    Site support depends on yt-dlp. Local paths refer to the server machine.
+    """
+    job_id = job_id or f"media_{uuid.uuid4().hex[:12]}"
+    try:
+        validate_job_id(job_id)
+        validate_request(source, mode, media_type, beat_engine, fps)
+        if job_id in JOB_STORE:
+            raise ValueError(f"Job '{job_id}' already exists; use a new job_id")
+        job_dir = create_job_directory(JOBS_ROOT, job_id)
+    except (ValueError, OSError) as exc:
+        return json.dumps({"job_id": job_id, "status": "error",
+                           "error": {"type": type(exc).__name__, "message": str(exc)}})
+    started_at = time.time()
+    JOB_STORE[job_id] = {"status": JobStatus.QUEUED, "started_at": started_at}
+    write_json(job_dir / "job.json", {"job_id": job_id, "status": "queued", "started_at": started_at})
+    options = dict(mode=mode, media_type=media_type, beat_engine=beat_engine, fps=fps,
+                   keep_media=keep_media, separate=separate)
+    threading.Thread(target=_run_media_pipeline,
+                     args=(job_id, source, job_dir, started_at, options), daemon=True).start()
+    return json.dumps({"job_id": job_id, "status": "queued", "poll_tool": "get_job_status"})
+
+
+def _persisted_job(job_id: str) -> dict | None:
+    job_dir = JOBS_ROOT / job_id
+    for name in ("result.json", "job.json"):
+        path = job_dir / name
+        if path.is_file():
+            try:
+                result = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if name == "job.json":
+                return {"job_id": job_id, "status": "error", "error": {
+                    "type": "InterruptedJob", "message": "Server stopped before job completion; submit a new job."}}
+            return result
+    return None
+
+
 @app.tool()
 async def get_job_status(job_id: str) -> str:
     """
@@ -259,9 +337,13 @@ async def get_job_status(job_id: str) -> str:
         job_id: The job ID returned by get_sonic_signature.
     """
     logger.info("▶ get_job_status | job=%s", job_id)
+    try:
+        validate_job_id(job_id)
+    except ValueError as exc:
+        return json.dumps({"status": "error", "error": str(exc)})
     job = JOB_STORE.get(job_id)
     if not job:
-        result = {"error": f"Job '{job_id}' not found."}
+        result = _persisted_job(job_id) or {"error": f"Job '{job_id}' not found."}
         logger.warning("  get_job_status | job=%s not found", job_id)
     else:
         result = job.get("payload", {"status": job["status"]})
@@ -281,6 +363,15 @@ async def list_jobs() -> str:
         }
         for jid, info in JOB_STORE.items()
     ]
+    for path in JOBS_ROOT.iterdir():
+        if path.is_dir() and path.name not in JOB_STORE:
+            try:
+                validate_job_id(path.name)
+            except ValueError:
+                continue
+            persisted = _persisted_job(path.name)
+            if persisted:
+                summary.append({"job_id": path.name, "status": persisted.get("status"), "persisted": True})
     return json.dumps(summary, indent=2)
 
 
@@ -290,7 +381,7 @@ async def check_health() -> str:
     import subprocess
     import importlib.util
 
-    results = {"status": "ok", "checks": []}
+    results = {"status": "ok", "checks": [], "workflow_modes": ["extract", "rhythm", "full"]}
     all_ok = True
 
     # FFmpeg is a genuine CLI dependency — converter.py shells out to it.
@@ -311,6 +402,16 @@ async def check_health() -> str:
         res = {"name": "FFmpeg", "status": "not_found", "error": str(e)}
         all_ok = False
     results["checks"].append(res)
+
+    import shutil
+    ffprobe_ok = shutil.which("ffprobe") is not None
+    results["checks"].append({"name": "FFprobe", "status": "ok" if ffprobe_ok else "missing"})
+    all_ok = all_ok and ffprobe_ok
+    results["optional_engines"] = {
+        "beat-this": importlib.util.find_spec("beat_this") is not None,
+        "all-in-one": importlib.util.find_spec("allin1_infer") is not None,
+        "demucs": importlib.util.find_spec("demucs") is not None,
+    }
 
     # yt-dlp is used as a Python library (pipeline imports yt_dlp), not via CLI,
     # so probe it by import — the CLI entry point may be absent/broken yet the
@@ -410,12 +511,14 @@ def main():
     if transport == "sse":
         port = int(os.environ.get("PORT", 8000))
         logger.info("Starting Audio Sonic MCP in SSE mode on port %d...", port)
-        app.run(transport="sse", host="0.0.0.0", port=port)
+        app.settings.host = os.environ.get("HOST", "127.0.0.1")
+        app.settings.port = port
+        app.run(transport="sse")
     elif transport == "hybrid":
         import uvicorn
         port = int(os.environ.get("PORT", 8000))
         logger.info("Starting Audio Sonic Hybrid Server (MCP SSE + REST API) on port %d...", port)
-        uvicorn.run("app_cloud:app", host="0.0.0.0", port=port, reload=False)
+        uvicorn.run("app_cloud:app", host=os.environ.get("HOST", "127.0.0.1"), port=port, reload=False)
     else:
         logger.info("Starting Audio Sonic MCP in Stdio mode...")
         app.run(transport="stdio")

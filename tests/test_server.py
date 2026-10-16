@@ -70,8 +70,8 @@ async def test_invalid_url_returns_error_immediately():
 
 
 @pytest.mark.asyncio
-async def test_unsupported_domain_returns_error_immediately():
-    result = await get_sonic_signature("https://vimeo.com/123456")
+async def test_unsupported_protocol_returns_error_immediately():
+    result = await get_sonic_signature("file:///tmp/track.mp3")
     data = json.loads(result)
     assert data["header"]["status"] == "error"
 

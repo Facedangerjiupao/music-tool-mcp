@@ -7,10 +7,15 @@ import os
 import re
 import json
 import subprocess
+import math
 from pathlib import Path
 from urllib.parse import urlparse
 
 import yt_dlp
+
+from pipeline.runtime import configure_runtime
+
+configure_runtime()
 
 
 SUPPORTED_HOSTS = {
@@ -21,26 +26,26 @@ SUPPORTED_HOSTS = {
     "m.youtube.com",
 }
 
-SUPPORTED_AUDIO_EXTS = {"mp3", "wav", "flac", "ogg", "m4a", "aac"}
+SUPPORTED_AUDIO_EXTS = {"mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "aiff", "aif", "wma"}
+SUPPORTED_VIDEO_EXTS = {"mp4", "mov", "mkv", "webm", "avi", "m4v", "ts", "mpeg", "mpg"}
 
 
 def validate_url_format(url: str) -> None:
     """
-    Synchronous URL format and domain check — no network calls.
-    Raises ValueError for invalid or unsupported URLs.
+    Synchronous HTTP(S) URL check — actual site support is resolved by yt-dlp.
+    Raises ValueError for malformed URLs or unsupported protocols.
     Called upfront by get_sonic_signature before spawning the pipeline task.
     """
     parsed = urlparse(url)
 
-    if not parsed.scheme or not parsed.netloc:
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
         raise ValueError(f"Invalid URL format: {url!r}")
-
-    host = parsed.netloc.lstrip("www.")
-    if host not in SUPPORTED_HOSTS and not _is_direct_audio(url):
-        raise ValueError(
-            f"Unsupported source: '{parsed.netloc}'. "
-            f"Supported: {', '.join(sorted(SUPPORTED_HOSTS))}"
-        )
+    if parsed.username or parsed.password or any(c.isspace() for c in parsed.netloc):
+        raise ValueError("Invalid URL format: credentials and whitespace in host are unsupported")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise ValueError(f"Invalid URL format: {url!r}") from exc
 
 
 def validate_source(url: str) -> dict:
@@ -60,6 +65,7 @@ def validate_source(url: str) -> dict:
         # of following the playlist/radio (which lands on a different, often
         # unavailable, track). Browser-copied YouTube URLs usually carry these.
         "noplaylist": True,
+        "skip_download": True,
     }
 
     proxy_url = os.environ.get("YTDLP_PROXY")
@@ -74,6 +80,10 @@ def validate_source(url: str) -> dict:
 
     if meta is None:
         raise RuntimeError(f"yt-dlp returned no metadata for '{url}'")
+    if meta.get("_type") in {"playlist", "multi_video"}:
+        raise ValueError("Use a single media item URL, not a playlist.")
+    if meta.get("is_live"):
+        raise ValueError("Live streams are unsupported; use a finished recording.")
 
     duration = meta.get("duration", 0)
     if duration and duration > 3600:
@@ -93,6 +103,7 @@ def validate_source(url: str) -> dict:
         "webpage_url": meta.get("webpage_url", url),
         "extractor": meta.get("extractor", "unknown"),
         "genre_hint": genre_hint,
+        "source_type": "url",
     }
 
 
@@ -104,8 +115,8 @@ def validate_file_path(path: str) -> None:
         raise ValueError(f"Not a regular file: {path}")
     
     ext = p.suffix.lower().lstrip(".")
-    if ext not in SUPPORTED_AUDIO_EXTS:
-        raise ValueError(f"Unsupported audio extension: {ext}")
+    if ext not in SUPPORTED_AUDIO_EXTS | SUPPORTED_VIDEO_EXTS:
+        raise ValueError(f"Unsupported media extension: {ext}")
 
 
 def validate_file_source(path: str) -> dict:
@@ -118,16 +129,23 @@ def validate_file_source(path: str) -> dict:
     cmd = [
         "ffprobe",
         "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-show_entries", "format=duration:stream=codec_type",
+        "-of", "json",
         str(Path(path).resolve())
     ]
     try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        duration = float(res.stdout.strip())
+        res = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+                             check=True, timeout=30)
+        probe = json.loads(res.stdout)
+        duration = float(probe.get("format", {}).get("duration", 0))
     except Exception as exc:
         raise RuntimeError(f"Failed to probe file duration via ffprobe: {exc}") from exc
 
+    if not any(s.get("codec_type") == "audio" for s in probe.get("streams", [])):
+        raise ValueError("Media contains no audio stream.")
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("Media duration must be finite and greater than zero.")
     if duration > max_dur:
         raise ValueError(f"Duration {duration}s exceeds {max_dur}s limit.")
 

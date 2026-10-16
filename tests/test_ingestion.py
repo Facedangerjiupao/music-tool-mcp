@@ -54,9 +54,9 @@ class TestValidateSource:
         with pytest.raises(ValueError, match="Invalid URL format"):
             validate_source("www.youtube.com/watch?v=abc")
 
-    def test_unsupported_host_raises(self):
-        with pytest.raises(ValueError, match="Unsupported source"):
-            validate_source("https://soundcloud.com/artist/track")
+    def test_other_sites_are_delegated_to_ytdlp(self):
+        with patch("pipeline.ingestion.yt_dlp.YoutubeDL", return_value=make_ydl_mock({"title": "Track", "duration": 60})):
+            assert validate_source("https://soundcloud.com/artist/track")["title"] == "Track"
 
     def test_valid_youtube_url_returns_metadata(self):
         meta = {
@@ -167,9 +167,8 @@ class TestValidateUrlFormat:
         with pytest.raises(ValueError, match="Invalid URL format"):
             validate_url_format("www.youtube.com/watch?v=abc")
 
-    def test_rejects_unsupported_domain(self):
-        with pytest.raises(ValueError, match="Unsupported source"):
-            validate_url_format("https://vimeo.com/123456")
+    def test_accepts_other_domains_for_ytdlp(self):
+        validate_url_format("https://vimeo.com/123456")
 
     def test_rejects_random_string(self):
         with pytest.raises(ValueError, match="Invalid URL format"):

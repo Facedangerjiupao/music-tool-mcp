@@ -1,25 +1,87 @@
 {
-  "identifier": "ripunjay-kashyap-audio-sonic-mcp",
-  "name": "Audio Sonic MCP",
-  "version": "1.2.0",
-  "description": "Runs entirely on your own machine - no API keys, no uploads, no cloud. Turn a YouTube link or a local audio file into a structured sonic signature: BPM, section-by-section musical key, a production profile (vocal presence, transient punch, stereo width), and a 512-dimension CLAP vibe embedding.",
-  "author": "Ripunjay Kashyap",
-  "authorUrl": "https://github.com/ripunjay-kashyap",
-  "homepage": "https://github.com/ripunjay-kashyap/audio-sonic-mcp",
+  "identifier": "facedangerjiupao-music-tool-mcp",
+  "name": "Music Tool MCP",
+  "version": "1.3.0",
+  "description": "URL/local audio or video to retained media and full-track editing timestamps. MCP and CLI workflow fork of Audio Sonic MCP; optional Beat This! beats and downbeats.",
+  "author": "Facedangerjiupao",
+  "authorUrl": "https://github.com/Facedangerjiupao",
+  "homepage": "https://github.com/Facedangerjiupao/music-tool-mcp",
   "icon": "🎵",
   "tags": [
     "audio",
+    "video",
     "music",
-    "bpm",
-    "key-detection",
-    "music-analysis",
-    "clap",
-    "embeddings",
-    "demucs",
-    "stem-separation",
+    "beat-tracking",
+    "downbeats",
+    "workflow",
+    "mcp",
     "local-first"
   ],
   "tools": [
+    {
+      "name": "prepare_media",
+      "description": "Submit a URL or local audio/video for extraction or full-track rhythm timestamps. Returns job_id immediately; poll get_job_status until success or error.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "extract",
+              "rhythm",
+              "full"
+            ],
+            "default": "rhythm"
+          },
+          "media_type": {
+            "type": "string",
+            "enum": [
+              "audio",
+              "video"
+            ],
+            "default": "audio"
+          },
+          "beat_engine": {
+            "type": "string",
+            "enum": [
+              "librosa",
+              "beat-this",
+              "all-in-one"
+            ],
+            "default": "librosa"
+          },
+          "fps": {
+            "type": "number",
+            "default": 30
+          },
+          "keep_media": {
+            "type": "boolean",
+            "default": true
+          },
+          "separate": {
+            "type": "boolean",
+            "default": false
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "source"
+        ]
+      }
+    },
     {
       "name": "get_sonic_signature",
       "description": "Submits a YouTube URL for sonic analysis and returns immediately.\nThe pipeline runs in the background — poll get_job_status(job_id) for results.\nTypical processing: 20-30s on GPU, ~6-8 min on CPU (Demucs separation dominates).\n\nArgs:\n    url: YouTube URL of the track to analyze.\n    job_id: Optional custom job ID. Auto-generated if omitted.",
@@ -44,7 +106,7 @@
     },
     {
       "name": "get_job_status",
-      "description": "Returns the current status and payload of a previously submitted job.\n\nArgs:\n    job_id: The job ID returned by get_sonic_signature.",
+      "description": "Read a submitted workflow or legacy job by job_id. Completed results persist across restarts.",
       "inputSchema": {
         "properties": {
           "job_id": {

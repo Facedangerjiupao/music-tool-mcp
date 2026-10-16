@@ -5,6 +5,9 @@ __pycache__/
 
 # Environments
 .venv/
+.runtime/
+outputs/
+mcp.config.local.json
 env/
 venv/
 ENV/
@@ -52,6 +55,14 @@ htmlcov/
 *.m4a
 *.aac
 *.webm
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.m4v
+*.opus
+cookies*.txt
+*.cookies
 
 # Job cache — all runtime working data (downloaded audio, WAV, stems, metadata).
 # Regenerable; metadata.json can contain local filesystem paths — never commit.

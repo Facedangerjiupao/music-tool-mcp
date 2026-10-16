@@ -38,7 +38,7 @@ class TestCLIValidation:
     def test_validate_file_path_unsupported_ext(self, tmp_path):
         bad_file = tmp_path / "song.txt"
         bad_file.write_text("not a song")
-        with pytest.raises(ValueError, match="Unsupported audio extension"):
+        with pytest.raises(ValueError, match="Unsupported media extension"):
             validate_file_path(str(bad_file))
 
     def test_validate_file_source_success(self, synthetic_stereo_wav):

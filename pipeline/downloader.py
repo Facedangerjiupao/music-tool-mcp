@@ -31,7 +31,7 @@ class _YtdlpLogger:
         logger.error(msg)
 
 
-def download_audio(url: str, job_id: str, jobs_root: Path) -> Path:
+def download_audio(url: str, job_id: str, jobs_root: Path, media_type: str = "audio") -> Path:
     """
     Downloads the best available audio stream from the given URL.
     Returns the path to the downloaded raw audio file.
@@ -41,13 +41,16 @@ def download_audio(url: str, job_id: str, jobs_root: Path) -> Path:
     - No video mux: skips the heavy video track entirely
     - Output is saved to a per-job temp directory
     """
+    if media_type not in {"audio", "video"}:
+        raise ValueError("media_type must be audio or video")
     job_dir = jobs_root / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
-    output_template = str(job_dir / "raw_audio.%(ext)s")
+    prefix = "raw_video" if media_type == "video" else "raw_audio"
+    output_template = str(job_dir / f"{prefix}.%(ext)s")
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestvideo+bestaudio/best" if media_type == "video" else "bestaudio/best",
         "outtmpl": output_template,
         # Correct key is "noplaylist" — yt-dlp silently ignores the misspelled
         # "no_playlist". Ensures a radio/playlist URL downloads only the video.
@@ -56,7 +59,11 @@ def download_audio(url: str, job_id: str, jobs_root: Path) -> Path:
         "logger": _YtdlpLogger(),
         "noprogress": False,
         "newline": True,
+        "socket_timeout": 30,
+        "retries": 3,
     }
+    if media_type == "video":
+        ydl_opts["merge_output_format"] = "mkv"
 
     proxy_url = os.environ.get("YTDLP_PROXY")
     if proxy_url:
@@ -69,7 +76,8 @@ def download_audio(url: str, job_id: str, jobs_root: Path) -> Path:
     except yt_dlp.utils.DownloadError as exc:
         raise RuntimeError(f"yt-dlp download failed for '{url}': {exc}") from exc
 
-    candidates = list(job_dir.glob("raw_audio.*"))
+    candidates = [p for p in job_dir.glob(f"{prefix}.*")
+                  if p.is_file() and p.suffix not in {".part", ".ytdl", ".json"}]
     if not candidates:
         raise FileNotFoundError(
             f"yt-dlp reported success but no file found in: {job_dir}"

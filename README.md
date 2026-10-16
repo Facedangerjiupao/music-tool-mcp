@@ -1,426 +1,93 @@
-# 🎵 Audio Sonic MCP
+# Music Tool MCP · 音乐素材与视频卡点
 
-[![Tests](https://github.com/ripunjay-kashyap/audio-sonic-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/ripunjay-kashyap/audio-sonic-mcp/actions/workflows/test.yml)
+基于 [Audio Sonic MCP](https://github.com/ripunjay-kashyap/audio-sonic-mcp) 改造的开源工作流工具。输入网站链接、本地音频或含音轨的视频，返回可继续使用的音频文件、真实节拍时间和 JSON；供 dot、Codex 和其他 AI 工作流调用。
+
+[![Tests](https://github.com/Facedangerjiupao/music-tool-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/Facedangerjiupao/music-tool-mcp/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![MCP](https://img.shields.io/badge/MCP-server-8A2BE2.svg)](https://modelcontextprotocol.io/)
 
-**Turn any song into a structured "sonic signature" — extracting tempo, musical key, a 512-dimension CLAP vibe embedding, human-readable vibe tags, and a production profile — from a single local call.**
+## 从这里开始
 
-Audio Sonic MCP runs entirely on your local machine (requiring no API keys, external servers, or cloud dependencies) and exposes two premium access points to the same underlying high-fidelity audio analysis engine:
+- **让 dot 安装并使用：** [DOT_SETUP.md](DOT_SETUP.md)，包含可直接发给 dot 的安装指令。
+- **完整参数和结果字段：** [WORKFLOW.zh-CN.md](WORKFLOW.zh-CN.md)。
+- **通用 MCP 配置模板：** [mcp.example.json](mcp.example.json)。
 
-| | Tailored For | Core Interface & Mechanics |
-|---|---|---|
-| 🤖 **MCP Server** | LLMs, AI agents, & IDEs (Claude, Cursor, Windsurf, Cline) | Asynchronous, fire-and-forget analysis of YouTube URLs. Avoids blocking client LLMs during heavy audio processing. |
-| 🎚️ **Local CLI** | Musicians, sound producers, & audio engineers | Deep command-line tool targeting local files for full-song multi-window analysis and high-fidelity output. |
+## 能做什么
 
----
-
-## 🎹 Quick Taste: What You Get
-
-### 1. Musician-Friendly CLI Summary (`--summary` mode)
-```text
-🎵 SONIC SIGNATURE — my_demo.mp3  (3:24)
-
-  TEMPO    153.8 BPM  (steady)
-  KEY      G Major  ·  shifts to G Phrygian @0:30   (confidence 74%)
-  VIBE     aggressive · dark · driving · hip-hop · gritty
-
-  PRODUCTION
-     Vocals     forward
-     Punch      0.62  (moderate)
-     Stereo     wide
-     Low end    ~55 Hz dominant
-
-  Overall confidence: 88%   ·   analyzed in 0:28 (GPU-accelerated)
-```
-
-### 2. Comprehensive JSON (Returned by MCP and CLI by default)
-```json
-{
-  "header": {
-    "job_id": "sig_a3f9b2c1",
-    "status": "success",
-    "confidence_score": 0.88,
-    "source_metadata": {
-      "title": "Acoustic Vibe Demo",
-      "duration_sec": 204,
-      "source_type": "file"
-    }
-  },
-  "sonic_signature": {
-    "bpm": 153.8,
-    "bpm_engine": "madmom",
-    "bpm_variable": false,
-    "key": "G Major",
-    "key_variable": true,
-    "key_map": [
-      { "start_sec": 0.0,  "end_sec": 30.0, "key": "G Major" },
-      { "start_sec": 30.0, "end_sec": 90.0, "key": "G Phrygian" }
-    ],
-    "mode_confidence": 0.74,
-    "vibe_vector": [0.012, -0.034, "... 512 float dimensions ..."],
-    "vibe_tags": ["aggressive", "dark", "driving", "hip-hop", "gritty"],
-    "production_profile": {
-      "vocal_presence": "forward",
-      "transient_punch": 0.62,
-      "stereo_width": "wide",
-      "dominant_freq_peaks_hz": {
-        "harmonic": [55.0, 110.2],
-        "percussive": [125.0, 250.1]
-      }
-    }
-  },
-  "telemetry": {
-    "inference_time_sec": 28.0
-  }
-}
-```
-
----
-
-## ⚡ Key Features
-
-* 🥁 **Tempo & Beat Tracking** — Full BPM computation with variable-tempo drift detection and transient windowing.
-* 🎹 **Key & Harmonic Mapping** — Computes structural musical key + mode, generating a detailed `key_map` tracking section-by-section modulations.
-* 🌈 **Vibe & Style Embeddings** — Compiles a 512-dimensional CLAP embedding and human-readable style tags (covering energy, texture, mood, and genre) using zero-shot music vocab classification.
-* 🎚️ **Production Analytics** — Measures vocal spatial presence, transient punch coefficients, stereo width, and dominant frequency peaks.
-* 🤖 **MCP-Native System** — Fully exposes 4 standardized Model Context Protocol tools for instant integration into AI tools.
-* 🪶 **Robust Graceful Degradation** — Automatically utilizes a CUDA GPU if present and falls back to CPU; gracefully degrades to HPSS and standard librosa feature arrays if heavy deep learning packages (`[clap]`) are omitted.
-* 🔒 **100% Offline & Private** — All conversion, separation, and inference occur locally.
-
----
-
-## 📦 Installation & Setup
-
-### System Prerequisites
-Ensure you have **Python 3.10+** and **FFmpeg** installed and accessible on your system `PATH`.
-
-#### Installing FFmpeg:
-* **macOS**: `brew install ffmpeg`
-* **Linux (Debian/Ubuntu)**: `sudo apt update && sudo apt install -y ffmpeg`
-* **Windows**: Run `winget install Gyan.FFmpeg` via PowerShell (Administrator), or download manually from [ffmpeg.org](https://ffmpeg.org/download.html) and add the `bin` directory to your system environment variables.
-
----
-
-### Step-by-Step Installation
-
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/ripunjay-kashyap/audio-sonic-mcp.git
-   cd audio-sonic-mcp
-   ```
-
-2. **Initialize Virtual Environment**
-   ```bash
-   python -m venv .venv
-   # Activate on macOS/Linux:
-   source .venv/bin/activate
-   # Activate on Windows (PowerShell):
-   .venv\Scripts\activate
-   ```
-
-3. **Install Dependencies**
-   Choose between the lightweight core engine or the full high-fidelity ML suite:
-   
-   * **Option A: Full High-Fidelity ML Suite (Recommended)**
-     Includes demixing stems (Demucs) and zero-shot vibe vectors (CLAP). Requires ~4 GB disk space.
-     ```bash
-     pip install -e ".[clap]"
-     ```
-   * **Option B: Core Lightweight Pipeline**
-     Uses standard digital signal processing (HPSS/librosa). Rapid install and minimal footprint.
-     ```bash
-     pip install -e .
-     ```
-
-> [!NOTE]
-> The optional `[clap]` stack installs `torch`, `torchaudio`, `transformers`, and `demucs`. Without these, the server automatically switches to light fallbacks (HPSS instead of Demucs, standard feature matrices instead of CLAP vectors, and leaves out `vibe_tags`).
-
----
-
-## 🤖 MCP Client Configuration Guide
-
-Audio Sonic MCP registers itself as a standard package script. This enables you to run it using the global executable name (`audio-sonic-mcp`) directly from your virtual environment's bin folder, or run the script file manually.
-
-### 1. Claude Desktop Setup
-Open your Claude configuration file:
-* **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-* **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-* **Linux**: `~/.config/Claude/claude_desktop_config.json`
-
-Add the server to your `mcpServers` object:
-
-```json
-{
-  "mcpServers": {
-    "audio-sonic-mcp": {
-      "command": "C:\\path\\to\\audio-sonic-mcp\\.venv\\Scripts\\audio-sonic-mcp.exe",
-      "args": [],
-      "env": {
-        "JOBS_ROOT": "C:\\path\\to\\audio-sonic-mcp\\jobs"
-      }
-    }
-  }
-}
-```
-
-> [!IMPORTANT]
-> **Windows Users**: Always use **double backslashes** (`\\`) in JSON configuration paths. Point the executable directly to the `.exe` inside your `.venv\Scripts\` directory.
-
----
-
-### 2. Cursor IDE Integration
-To integrate Audio Sonic MCP into Cursor's AI pane:
-1. Navigate to **Settings** ➔ **Features** ➔ **MCP**.
-2. Click **+ Add New MCP Server**.
-3. Fill in the parameters:
-   * **Name**: `audio-sonic-mcp`
-   * **Type**: `command`
-   * **Command**: `/path/to/audio-sonic-mcp/.venv/bin/audio-sonic-mcp` (use `.exe` extension on Windows)
-
----
-
-### 3. Windsurf Integration
-Open your Windsurf MCP configurations file (typically found at `~/.codeium/windsurf/mcp_config.json`) and append the configuration:
-
-```json
-{
-  "mcpServers": {
-    "audio-sonic-mcp": {
-      "command": "/path/to/audio-sonic-mcp/.venv/bin/python",
-      "args": ["/path/to/audio-sonic-mcp/server.py"],
-      "env": {
-        "JOBS_ROOT": "/path/to/audio-sonic-mcp/jobs"
-      }
-    }
-  }
-}
-```
-
----
-
-### 4. Cline (VS Code Extension) Setup
-Open Cline's MCP setting file (usually located at `%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json` or equivalent platform storage) and add:
-
-```json
-{
-  "mcpServers": {
-    "audio-sonic-mcp": {
-      "command": "/path/to/audio-sonic-mcp/.venv/bin/audio-sonic-mcp",
-      "args": [],
-      "env": {
-        "JOBS_ROOT": "/path/to/audio-sonic-mcp/jobs"
-      }
-    }
-  }
-}
-```
-
----
-
-## 🤖 Interaction Flow for AI Agents & LLMs
-
-LLMs automatically learn how to use this server by reading its exposed tool definitions. Because audio stem separation and CLAP embeddings are computationally demanding, Audio Sonic MCP uses an **Asynchronous Fire-and-Forget Job Pattern**.
-
-### Automated LLM Workflow
-```
-  [User Prompts LLM]
-          │
-          ▼
-1. Submit URL ──────────────► [Tool: get_sonic_signature]
-                                      │ (Returns Job ID instantly)
-                                      ▼
-2. Notify User ◄───────────── [LLM acknowledges job is queued]
-          │
-          ├───► 3. Wait 10-15s (Or proceed with other tasks)
-          │
-          ▼
-4. Check Progress ──────────► [Tool: get_job_status]
-                                      │ (Checks status: running/success/error)
-                                      ▼
-5. Present Signature ◄─────── [LLM formats rich output for user]
-```
-
-### Natural Prompts to Try
-* *"Check the health of my audio-sonic-mcp server to make sure all ML components are ready."*
-* *"Submit this YouTube track for sonic analysis: `https://www.youtube.com/watch?v=XXXXXX`."*
-* *"Check the progress of my sonic signature job `sig_a1b2c3d4` and summarize the BPM, production width, and vibe once complete."*
-
----
-
-## 🎚️ CLI Usage (Local Files)
-
-For musicians, engineers, and producers working directly in the terminal, you can analyze a full-length local file directly without running any background servers:
-
-```bash
-# Get a visual, musician-friendly sonic signature digest (recommended)
-python analyze_file.py "my_demo.wav" --summary
-
-# Print full raw JSON directly to the stdout stream
-python analyze_file.py "my_demo.wav"
-
-# Dump JSON payload to a file while keeping the stdout clean
-python analyze_file.py "my_demo.wav" > signature.json
-```
-
-### CLI Command Options Reference
-
-| Option | Shorthand | Description |
-|---|---|---|
-| `path` | *None* | Absolute or relative path to the local audio file (Required). |
-| `--summary` | `-s` | Print a clean, formatted terminal summary instead of standard JSON. |
-| `--no-vector` | *None* | Generate JSON signature but omit the heavy 512-dimension vibe float array. |
-| `--out FILE` | `-o` | Output the final JSON signature directly to the specified file. |
-| `--keep` | `-k` | Do not delete intermediate WAV files or separated stem files in `jobs/`. |
-| `--job-id ID` | `-j` | Explicitly define the internal identifier (useful for batch scripts). |
-
-**Supported File Formats**: `wav`, `mp3`, `flac`, `ogg`, `m4a`, `aac`.
-
----
-
-## 🔧 Environment Variables Reference
-
-Configure environment options by declaring these variables in your active terminal session, container environment, or the `env` block of your MCP configuration file:
-
-| Variable | Default Value | Description / Practical Use |
-|---|---|---|
-| `JOBS_ROOT` | `./jobs` | Workspace directory where audio files, temporary converted WAVs, and stems are processed. |
-| `KEEP_JOB_FILES` | *Unset* | Set to `1` or `true` to keep separated stem WAVs on disk (adds ~75MB per job, useful for troubleshooting). |
-| `FILE_MAX_DURATION_SEC`| `600` | Safety ceiling for local file processing duration (YouTube downloads are capped at 60 minutes). |
-| `FFMPEG_BIN` | *Unset* | Path to folder containing the `ffmpeg` binary if it is not present in your system `PATH`. |
-| `YTDLP_PROXY` | *Unset* | HTTP/SOCKS proxy string passed directly to `yt-dlp` to bypass rate limits or network blocks. |
-| `TRANSPORT_MODE` | `stdio` | Transport the server listens on: `stdio` (default, for local MCP clients), `sse` (remote MCP over HTTP), or `hybrid` (MCP SSE **and** the REST API from `app_cloud.py`). `sse`/`hybrid` need `pip install ".[cloud]"`. |
-| `PORT` | `8000` | Listening port when `TRANSPORT_MODE` is `sse` or `hybrid`. Ignored for `stdio`. |
-
----
-
-## 🐳 Docker / Podman Execution
-
-If you prefer to avoid setting up local Python libraries, running via containers encapsulates FFmpeg, yt-dlp, and the core Python dependencies (CPU-based pipeline):
-
-```bash
-# Build the container image
-docker build -t audio-sonic-mcp .
-
-# Run the MCP server over stdio, mounting local folders for job persistence
-docker run -i --rm \
-  -v "$(pwd)/jobs:/app/jobs" \
-  -v "$(pwd)/models:/app/models" \
-  audio-sonic-mcp
-```
-
-To connect Claude Desktop to your Docker container, configure `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "audio-sonic-mcp-docker": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-v", "/absolute/path/to/jobs:/app/jobs",
-        "-v", "/absolute/path/to/models:/app/models",
-        "audio-sonic-mcp"
-      ]
-    }
-  }
-}
-```
-
----
-
-## ⚙️ How it Works under the Hood
-
-Audio Sonic MCP pipelines are constructed modularly, using transactional checkpoints to ensure reliability. 
-
-```text
-  LLM Agent / Claude Desktop                 Musician (Terminal)
-            │                                          │
-            │  MCP (stdio JSON-RPC)                    │  analyze_file.py
-            ▼                                          ▼
-┌──────────────────────────────────────────────────────────────────────────┐
-│  Modular 6-Stage Analysis Pipeline                                       │
-│                                                                          │
-│  Stage 1: Ingestion   │ Pre-checks format, scans duration metadata       │
-│  Stage 2: Download    │ Fetches audio tracks via yt-dlp (URLs only)      │
-│  Stage 3: Conversion  │ normalizes sample formats to 44.1kHz WAV (FFmpeg)│
-│  Stage 4: Separation  │ Splits stems: Vocals, Drums, Bass, Other (Demucs)│
-│  Stage 5: Analysis    │ Computes BPM, modulations, key, punch (librosa)  │
-│  Stage 6: Embeddings  │ Generates 512-dim zero-shot music vibe tags (CLAP)│
-└─────────────────────────────────────┬────────────────────────────────────┘
-                                      ▼
-             Result Payload: (header · sonic_signature · telemetry)
-```
-
-1. **Stem Demixing**: Meta AI's **Demucs (`mdx_extra`)** separates the track into isolation stems (`vocals`, `drums`, `bass`, `other`). If missing, it gracefully drops back to **Harmonic-Percussive Source Separation (HPSS)**.
-2. **Analysis engine**: **librosa** extracts rhythmic and tonal structures, matching chord patterns and sub-bass movements against Krumhansl-Schmuckler and Phrygian template engines.
-3. **Semantic Vibe Tagging**: **LAION CLAP** (`laion/larger_clap_music_and_speech`) runs zero-shot inference against high-coverage aesthetic descriptors (moods, textures, genres), choosing top candidates across stylistic poles.
-
----
-
-## 🩺 Resiliency & Troubleshooting
-
-### 1. One-Time Setup Download Delays
-Upon the **very first analysis job** utilizing the full ML pipeline, `demucs` and `transformers` will download their pre-trained model weights (approximately **400 MB** for Demucs, and **200 MB** for CLAP). 
-* The server redirects download progress indicators to `stderr` so they **do not corrupt** the JSON-RPC standard stream.
-* During this download, `get_job_status` will remain in `running`. Allow 1–3 minutes depending on your network speed. Subsequent startups take under **10 seconds**.
-
-### 2. FastMCP Concurrency Controls
-Model inference on multi-staged architectures is highly CPU/VRAM intensive. To protect consumer hardware and virtual environments from crashing (OutOfMemory exceptions), Audio Sonic MCP enforces a strict global serialization lock (`CONCURRENCY_LOCK`). 
-* If you submit multiple URLs simultaneously, they will be processed **sequentially**. 
-* Polling `get_job_status` for subsequent jobs will report `queued` or `running` while they wait in the pipeline queue.
-
-### 3. Windows Librosa Deadlock Fix
-FastMCP thread dispatching under Windows can cause Numba compilation deadlocks inside background worker threads. To prevent this, Audio Sonic MCP incorporates a **Pre-warming Routine** (`_prewarm_librosa()` and `_prewarm_demucs()`) on launch. It forces JIT compile of resampling, HPSS, and mono-mixing functions in the main thread before starting the RPC listener.
-
-### 4. BPM Accuracy and the `bpm_engine` Field
-Tempo is estimated by **madmom**'s RNN beat tracker. madmom is an *optional* dependency: it is unmaintained (latest release 0.16.1, classifiers stop at Python 3.7) and requires a Cython build, so it cannot be installed reliably everywhere and is **not** part of the default install.
-
-When madmom is unavailable the pipeline falls back to librosa. That fallback is good on steady four-on-the-floor material but can lock onto a **2:3 or octave multiple** of the true tempo — on one of our regression fixtures it reports 99.4 BPM against a ground truth of 148.
-
-So the tempo is never reported unqualified. **Every payload carries a `bpm_engine` field** naming the engine that actually produced the number:
-
-| `bpm_engine` | Meaning |
+| 输入 / 模式 | 输出 |
 |---|---|
-| `madmom` | RNN beat tracker — full accuracy. |
-| `librosa-fallback` | madmom unavailable; treat BPM as approximate and expect occasional octave/triplet errors. |
+| 网站链接或本地音视频，`extract` | 解码后的 WAV、保留的下载素材、绝对文件路径 |
+| `rhythm` + librosa | 全段 BPM、节拍、声音起始点、能量曲线、候选剪辑点 |
+| `rhythm` + Beat This! | 额外提供模型预测的小节第一拍 `downbeats` |
+| `full` | 节奏时间轴 + 上游调性、瞬态、立体声等特征 |
 
-`check_health` reports madmom's status explicitly. To enable the accurate path:
+复用 yt-dlp、FFmpeg、librosa 和可选的 Beat This!，不需要付费 API。工具提供数据，剧本、分镜和剪辑由调用它的 AI 继续完成。默认保留媒体，每个任务独立存储。
 
-```bash
-pip install ".[beats]"
-```
+声音起始点 `onsets` 不等于底鼓或军鼓分类；本工具目前不识别每次鼓声的乐器类别。候选剪辑点属于相对推荐，真实音乐仍需抽查。
 
-If the build fails on a recent Python, use 3.10 for the analysis environment — madmom has no wheels for newer interpreters.
+## 安装
 
-### 5. Diagnosing with `check_health`
-If the server reports as `degraded` or tools are missing, call the `check_health` tool or check CLI warnings. It queries:
-* Availability of `ffmpeg` on the execution path.
-* Installation status of Python packages (`librosa`, `soundfile`, `mcp`, etc.).
-* Presence of the optional `madmom` beat tracker, and which `bpm_engine` will be used as a result.
-* Access permissions to the `JOBS_ROOT` directory.
-
----
-
-## 🛠️ Development & Testing
-
-Run unit tests inside your virtual environment to verify the mathematical pipelines using synthesized audio waveforms:
+需要 Python 3.10+（推荐 3.12）、Git，以及 PATH 中的 `ffmpeg` 和 `ffprobe`。也可以用 `FFMPEG_BIN` 指定二者所在目录。
 
 ```bash
-# Install development test framework
-pip install -e ".[dev]"
-
-# Execute full suite (requires no network or model downloads)
-pytest
-
-# Test specifically CLI execution code paths
-pytest tests/test_cli.py
+git clone https://github.com/Facedangerjiupao/music-tool-mcp.git
+cd music-tool-mcp
+python -m venv .venv
+# Linux / macOS
+.venv/bin/python -m pip install -e ".[timeline]"
+# Windows 使用：.\.venv\Scripts\python.exe -m pip install -e ".[timeline]"
 ```
 
----
+`timeline` 会安装 PyTorch 和 Beat This!；首次用该引擎会下载权重。只需要提取或 librosa 时，用 `pip install -e .`。CPU 环境、FFmpeg 安装、MCP 注册详见 [dot 安装说明](DOT_SETUP.md)。
 
-## 📄 License
+安装后通过虚拟环境中的 `audio-sonic-mcp` 启动 stdio MCP，通过 `audio-sonic-media` 调用 CLI。默认任务目录是 `~/.cache/music-tool/jobs`，可通过 `JOBS_ROOT` 或 CLI `--jobs-root` 修改。路径属于实际运行工具的机器。
 
-Distributed under the **MIT License**. See `LICENSE` for details.
+```bash
+.venv/bin/audio-sonic-media /path/to/music.mp3 --beat-engine beat-this --fps 30
+.venv/bin/audio-sonic-media 'https://example.com/video/123' --mode extract --media-type video
+```
 
-© 2026 Ripunjay Kashyap. All rights reserved.
+Windows 克隆安装后也可用 `run-media.cmd` 和 `start-mcp.cmd`。
+
+## MCP 工作流
+
+1. `check_health` 检查 FFmpeg 和依赖。
+2. `prepare_media` 提交来源和参数，立即获得 `job_id`。
+3. 适当间隔调用 `get_job_status`，直到 `success` 或 `error`。
+4. 成功后使用返回的绝对文件路径和 `timeline` 继续制作。
+
+```json
+{
+  "source": "/absolute/path/music.mp3",
+  "mode": "rhythm",
+  "beat_engine": "beat-this",
+  "fps": 30,
+  "keep_media": true
+}
+```
+
+结果包含 `beats`、`downbeats`、`onsets`、`energy_curve` 和 `cut_candidates`，以秒和给定 fps 的帧号表示。librosa 不预测小节第一拍，`downbeats` 留空；不会按 BPM 编造拍点。还保留 `list_jobs` 和上游 `get_sonic_signature` 接口。
+
+## 网站链接与 dot 的运行位置
+
+链接下载由 yt-dlp 处理。抖音、B站等站点是否成功取决于链接、地区、登录状态和网站校验，无法保证所有视频都能直接下载。本项目没有自动通过验证码或接管浏览器的功能。
+
+遇到网站校验时，可在能正常访问的浏览器中完成登录并取得允许下载的素材，再把本地文件交给工具。浏览器操作属于调用方的能力；不会随着安装此 MCP 自动获得。
+
+GitHub 发布源码后，dot 仍需在自己的执行环境或已连接电脑上安装。你电脑上的 MCP 配置不会自动同步到 dot 的云端。见 [官方 dot 电脑连接说明](https://learn.chatgpt.com/docs/dots/computers-and-apps)。
+
+## 可选能力与验证
+
+`.[cloud]` 提供 REST API 和 MCP SSE；`.[clap]` 提供上游 Demucs / CLAP。All-In-One-Infer 适配为可选功能，未完成真实模型验证。保留的 Dockerfile 来自上游、包含较重模型依赖，本分支推荐上述原生 Python 安装；未验证 Docker 构建。
+
+```bash
+.venv/bin/python -m pip install -e ".[dev,cloud]"
+.venv/bin/python -m pytest -q
+```
+
+测试涵盖本地音视频、中文路径、完整 90 秒已知节拍、下载、CLI、MCP stdio / SSE、REST 与任务恢复。部分上游准确率测试需要另备音乐样本，会跳过。
+
+## 来源与许可证
+
+派生基线：Audio Sonic MCP `1cb0e3e36a5ed4cecec95987eb1e419f7b2b34f4`。保留原作者版权和 [MIT LICENSE](LICENSE)。上游文档存于 [README.upstream.md](README.upstream.md)。
+
+主要组件：[yt-dlp](https://github.com/yt-dlp/yt-dlp)、[FFmpeg](https://ffmpeg.org/)、[librosa](https://github.com/librosa/librosa)、[Beat This!](https://github.com/CPJKU/beat_this)。各组件及模型权重遵循各自许可证；下载的素材和运行环境不包含在仓库中。

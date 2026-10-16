@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "music-tool": {
+      "command": "/ABSOLUTE/PATH/music-tool-mcp/.venv/bin/python",
+      "args": ["-X", "utf8", "-m", "server"],
+      "env": {
+        "TRANSPORT_MODE": "stdio",
+        "PYTHONUTF8": "1",
+        "OMP_NUM_THREADS": "4",
+        "JOBS_ROOT": "/ABSOLUTE/WRITABLE/PATH/music-jobs"
+      }
+    }
+  }
+}
